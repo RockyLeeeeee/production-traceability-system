@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>生产追溯 MES 系统</title>
+    <!-- 添加 Font Awesome 图标库 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+    <style>
+        /* 保持原有样式 */
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        h1 { color: #333; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .search-bar { margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+        th { background-color: #f2f2f2; }
+        /* 添加下拉菜单和输入框样式 */
+        select, input[type="text"] { width: 100%; padding: 5px; box-sizing: border-box; }
+        /* 日期选择器样式 */
+        input[type="date"] {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            font-size: 16px;
+            height: 38px;
+        }
+        /* 增大日期选择器中的文字大小 */
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            font-size: 16px;
+            padding: 4px;
+        }
+        input[type="date"]::-webkit-inner-spin-button {
+            height: 38px;
+        }
+        /* 二维码样式 */
+        #qrcode { display: flex; justify-content: center; align-items: center; height: 100%; }
+        /* 打印图标样式 */
+        .print-icon { font-size: 24px; cursor: pointer; }
+        /* 生成按钮样式 */
+        .generate-button {
+            background-color: green;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        /* 统一第二行输入框和下拉菜单的样式 */
+        #productTable select,
+        #productTable input[type="number"],
+        #productTable input[type="date"],
+        #productTable input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            font-size: 14px;
+            height: 38px;
+        }
+
+        /* 调整日期选择器的样式 */
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            font-size: 14px;
+            padding: 4px;
+        }
+        input[type="date"]::-webkit-inner-spin-button {
+            height: 38px;
+        }
+
+        /* 确保下拉菜单选项的文字大小一致 */
+        #productTable select option {
+            font-size: 14px;
+        }
+
+        /* 调整数量列的宽度 */
+        #productTable th:nth-child(2),
+        #productTable td:nth-child(2) {
+            width: 75px; /* 原来是50px，增大0.5倍后变为75px */
+        }
+
+        /* 调整数量输入框的宽度 */
+        #quantityInput {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            font-size: 14px;
+            height: 38px;
+        }
+
+        .highlight {
+            background-color: #e6f3ff; /* 浅蓝色背景 */
+            color: #0066cc; /* 深蓝色文字 */
+        }
+
+        /* 历史记录表格容器样式 */
+        .history-table-container {
+            max-height: 600px; /* 增加高度以显示更多记录 */
+            overflow-y: auto;
+            border: 1px solid #ddd;
+        }
+
+        /* 优化表格性能 */
+        #historyTable {
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+
+        #historyTable tbody tr {
+            height: 30px; /* 固定行高以提高性能 */
+        }
+
+        /* 确保表头始终可见 */
+        #historyTable thead {
+            position: sticky;
+            top: 0;
+            background-color: #f2f2f2;
+            z-index: 1;
+        }
+    </style>
+    <!-- 引入 qrcode.js 库 -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+    <!-- 引入 jsPDF 库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- 引入支持中文的字体 -->
+    <script src="https://cdn.jsdelivr.net/npm/jspdf-font@1.0.1/dist/default_vfs.min.js"></script>
+    <!-- 引入 SheetJS 库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>生产追溯 MES 系统</h1>
+        
+        <div class="search-bar">
+            <input type="text" id="searchInput" placeholder="输入产品编号或批次号">
+            <button onclick="searchProduct()">搜索</button>
+        </div>
+        
+        <table id="productTable">
+            <thead>
+                <tr>
+                    <th>产品名称</th>
+                    <th>数量</th>
+                    <th>生产日期</th>
+                    <th>设备编号</th>
+                    <th>操作人员</th>
+                    <th>质量状态</th>
+                    <th>生成批次号</th>
+                    <th>二维码</th>
+                    <th>生成</th>
+                    <th>下载</th>
+                </tr>
+                <tr>
+                    <th>
+                        <select id="productSelect" onchange="generateBatchNumber()">
+                            <option value="">选择产品</option>
+                            <option value="P1">产品1</option>
+                            <option value="P2">产品2</option>
+                            <option value="P3">产品3</option>
+                        </select>
+                    </th>
+                    <th>
+                        <input type="number" id="quantityInput" min="1" step="1" onchange="validateQuantity(this); generateBatchNumber()">
+                    </th>
+                    <th>
+                        <input type="date" id="dateSelect" onchange="generateBatchNumber()">
+                    </th>
+                    <th>
+                        <select id="deviceSelect" onchange="generateBatchNumber()">
+                            <option value="">选择设备</option>
+                            <option value="DA">设备A</option>
+                            <option value="DB">设备B</option>
+                            <option value="DC">设备C</option>
+                        </select>
+                    </th>
+                    <th>
+                        <select id="operatorSelect" onchange="generateBatchNumber()">
+                            <option value="">选择操作员</option>
+                            <option value="01">张三</option>
+                            <option value="02">李四</option>
+                            <option value="03">王五</option>
+                        </select>
+                    </th>
+                    <th><input type="text" id="qualityInput" placeholder="输入质量状态"></th>
+                    <th id="batchNumber">-</th>
+                    <th><div id="qrcode"></div></th>
+                    <th><button class="generate-button" onclick="generateBatchNumberAndQRCode()">生成</button></th>
+                    <th><div class="download-icon" onclick="downloadQRCodePDF()"><i class="fas fa-file-pdf"></i></div></th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- 这里将通过JavaScript动态填充数据 -->
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 新增历史记录区域 -->
+    <div class="container">
+        <h2>历史记录</h2>
+        <div style="margin-bottom: 10px;">
+            <button onclick="clearHistory()">清空历史</button>
+            <button onclick="exportToExcel()" style="margin-left: 10px;">导出文件</button>
+        </div>
+        <div class="history-table-container">
+            <table id="historyTable">
+                <thead>
+                    <tr>
+                        <th>批次号</th>
+                        <th>生成时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- 这里将通过JavaScript动态填充数据 -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // 用于存储历史记录的数组
+        let history = [];
+
+        function searchProduct() {
+            const searchTerm = document.getElementById('searchInput').value.trim();
+            console.log('搜索:', searchTerm);
+            // 这里应该调用后端API进行实际搜索
+            
+            // 更新历史记录表格，高亮匹配项
+            updateHistoryTable(searchTerm);
+        }
+
+        function validateQuantity(input) {
+            input.value = Math.floor(Math.abs(input.value));
+            if (input.value < 1) {
+                input.value = 1;
+            }
+        }
+
+        function generateBatchNumber() {
+            const product = document.getElementById('productSelect').value;
+            const quantity = document.getElementById('quantityInput').value;
+            const date = document.getElementById('dateSelect').value;
+            const device = document.getElementById('deviceSelect').value;
+            const operator = document.getElementById('operatorSelect').value;
+
+            if (product && quantity && date && device && operator) {
+                // 将日期格式从YYYY-MM-DD转换为MMDD
+                const formattedDate = date.slice(5).replace('-', '');
+                const batchNumber = `${product}-${quantity}-${formattedDate}-${device}-${operator}`;
+                document.getElementById('batchNumber').textContent = batchNumber;
+            } else {
+                document.getElementById('batchNumber').textContent = '-';
+            }
+        }
+
+        function generateBatchNumberAndQRCode() {
+            const product = document.getElementById('productSelect').value;
+            const quantity = document.getElementById('quantityInput').value;
+            const date = document.getElementById('dateSelect').value;
+            const device = document.getElementById('deviceSelect').value;
+            const operator = document.getElementById('operatorSelect').value;
+
+            if (product && quantity && date && device && operator) {
+                // 将日期格式从YYYY-MM-DD转换为MMDD
+                const formattedDate = date.slice(5).replace('-', '');
+                const batchNumber = `${product}-${quantity}-${formattedDate}-${device}-${operator}`;
+                document.getElementById('batchNumber').textContent = batchNumber;
+                generateQRCode(batchNumber);
+                addToHistory(batchNumber);
+            } else {
+                alert('请选择所有必要的选项并输入数量');
+            }
+        }
+
+        function addToHistory(batchNumber) {
+            const now = new Date();
+            const timestamp = now.toLocaleString();
+            const existingRecord = history.find(record => record.batchNumber === batchNumber);
+
+            if (existingRecord) {
+                if (existingRecord.count < 3) {
+                    existingRecord.count++;
+                    existingRecord.timestamp = timestamp;
+                } else {
+                    alert('同一批次号不能生成超过3次');
+                    return;
+                }
+            } else {
+                history.unshift({ batchNumber, timestamp, count: 1 });
+            }
+
+            // 限制历史记录最多��示2000条
+            if (history.length > 2000) {
+                history.pop();
+            }
+
+            updateHistoryTable();
+        }
+
+        function clearHistory() {
+            if (confirm('确定要清空所有历史记录吗？')) {
+                history = [];
+                updateHistoryTable();
+            }
+        }
+
+        function updateHistoryTable(searchTerm = '') {
+            const tbody = document.querySelector('#historyTable tbody');
+            tbody.innerHTML = '';
+
+            if (history.length === 0) {
+                const row = tbody.insertRow();
+                const cell = row.insertCell(0);
+                cell.colSpan = 3;
+                cell.textContent = '暂无历史记录';
+                return;
+            }
+
+            // 使用文档片段来提高性能
+            const fragment = document.createDocumentFragment();
+
+            history.forEach((record, index) => {
+                const row = document.createElement('tr');
+                
+                const batchNumberCell = document.createElement('td');
+                const timestampCell = document.createElement('td');
+                const actionCell = document.createElement('td');
+
+                if (searchTerm && record.batchNumber.toLowerCase().startsWith(searchTerm.toLowerCase())) {
+                    batchNumberCell.innerHTML = `<span class="highlight">${record.batchNumber}</span>`;
+                    row.classList.add('highlight');
+                } else {
+                    batchNumberCell.textContent = record.batchNumber;
+                }
+
+                timestampCell.textContent = record.timestamp;
+
+                const downloadButton = document.createElement('button');
+                downloadButton.textContent = '下载PDF';
+                downloadButton.onclick = () => downloadQRCodePDFWithBatchNumber(record.batchNumber);
+                actionCell.appendChild(downloadButton);
+
+                row.appendChild(batchNumberCell);
+                row.appendChild(timestampCell);
+                row.appendChild(actionCell);
+
+                fragment.appendChild(row);
+            });
+
+            tbody.appendChild(fragment);
+        }
+
+        function generateQRCode(text) {
+            const qr = qrcode(0, 'L');
+            qr.addData(text);
+            qr.make();
+            document.getElementById('qrcode').innerHTML = qr.createImgTag(5);
+        }
+
+        function downloadQRCodePDF() {
+            const batchNumber = document.getElementById('batchNumber').textContent;
+            if (batchNumber === '-') {
+                alert('请先生成批次号和二维码');
+                return;
+            }
+            downloadQRCodePDFWithBatchNumber(batchNumber);
+        }
+
+        function downloadQRCodePDFWithBatchNumber(batchNumber) {
+            // 生成对应的二维码
+            const qr = qrcode(0, 'L');
+            qr.addData(batchNumber);
+            qr.make();
+            const qrCodeImg = qr.createDataURL(5);
+
+            // 创建 PDF
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4'
+            });
+
+            // 添加二维码图片
+            doc.addImage(qrCodeImg, 'PNG', 70, 70, 70, 70);
+
+            // 下载 PDF
+            doc.save('QRCode-' + batchNumber + '.pdf');
+        }
+
+        // 设置日期选择器的默认值为今天，并限制最大日期
+        function setDefaultDate() {
+            const today = new Date();
+            const year = today.getFullYear();
+            const month = String(today.getMonth() + 1).padStart(2, '0');
+            const day = String(today.getDate()).padStart(2, '0');
+            const todayString = `${year}-${month}-${day}`;
+            
+            const dateSelect = document.getElementById('dateSelect');
+            dateSelect.value = todayString;
+            dateSelect.max = todayString;  // 设置最大日期为今天
+        }
+
+        // 在页面加载时调用setDefaultDate函数
+        window.onload = setDefaultDate;
+
+        // 修改原有的搜索框事件监听
+        document.getElementById('searchInput').addEventListener('input', searchProduct);
+
+        function exportToExcel() {
+            // 创建一个工作簿
+            const wb = XLSX.utils.book_new();
+            
+            // 准备数据
+            const data = history.map(record => [
+                record.batchNumber,
+                record.timestamp,
+                record.count
+            ]);
+            
+            // 添加表头
+            data.unshift(['批次号', '生成时间', '生成次数']);
+            
+            // 创建工作表
+            const ws = XLSX.utils.aoa_to_sheet(data);
+            
+            // 将工作表添加到工作簿
+            XLSX.utils.book_append_sheet(wb, ws, "历史记录");
+            
+            // 生成 Excel 文件并下载
+            XLSX.writeFile(wb, "生产追溯历史记录.xlsx");
+        }
+    </script>
+</body>
+</html>
